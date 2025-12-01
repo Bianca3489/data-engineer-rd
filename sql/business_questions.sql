@@ -25,3 +25,9 @@ WHERE lead_type = 'HR' -- Hand Raise
 GROUP BY 1
 ORDER BY total_leads_hr DESC
 LIMIT 5;
+
+# Exportar resultado final para CSV
+query = "SELECT * FROM `case-2-boti.marketing_funnel.tb_delivery_metrics`"
+df_final = client.query(query).to_dataframe()
+df_final.to_csv('entregavel_metricas_finais.csv', index=False, sep=';')
+print("Arquivo CSV gerado com sucesso para envio.")
