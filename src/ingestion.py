@@ -1,55 +1,7 @@
+# ingestion.py
+# Script para ingestão de dados CSV do Google Drive para o BigQuery
+
 import pandas as pd
-from google.cloud import bigquery
-from google.oauth2 import service_account
-from google.colab import drive
-import os
-
-# Isso é necessário para acessar o JSON de credenciais e os arquivos CSV
-print("Montando Google Drive...")
-drive.mount('/content/drive')
-
-
-PROJECT_ID = 'case-2-boti'
-DATASET_ID = 'marketing_funnel'
-
-# Caminhos dos arquivos
-# Assumi que estão soltos na raiz do seu "Meu Drive"
-BASE_PATH = '/content/drive/MyDrive' 
-
-CREDENTIALS_PATH = os.path.join(BASE_PATH, 'credentials.json')
-FILE_PATH_FUNNEL = os.path.join(BASE_PATH, 'bi_challenge_rd_bi_funnel_email.csv')
-FILE_PATH_METAS = os.path.join(BASE_PATH, 'metas_email.csv')
-
-# Verifica se o arquivo de credenciais existe antes de tentar
-if not os.path.exists(CREDENTIALS_PATH):
-    raise FileNotFoundError(f"Arquivo de credenciais não encontrado em: {CREDENTIALS_PATH}")
-
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = CREDENTIALS_PATH
-client = bigquery.Client(project=PROJECT_ID)
-
-# Funções Auxiliares 
-
-def create_dataset_if_not_exists(dataset_id):
-    """Cria o dataset no BigQuery se ele não existir"""
-    dataset_ref = f"{PROJECT_ID}.{dataset_id}"
-    try:
-        client.get_dataset(dataset_ref)
-        print(f"Dataset {dataset_id} já existe.")
-    except Exception:
-        print(f"Dataset {dataset_id} não encontrado. Criando...")
-        dataset = bigquery.Dataset(dataset_ref)
-        dataset.location = "US" # Ou "southamerica-east1" se preferir
-        client.create_dataset(dataset)
-        print(f"Dataset {dataset_id} criado com sucesso.")
-
-def load_csv_to_bigquery(file_path, table_name):
-    """Carrega CSV para o BigQuery (Camada RAW)"""
-    
-    # Verifica se o arquivo CSV existe
-    if not os.path.exists(file_path):
-        print(f"ERRO: O arquivo não foi encontrado no caminho: {file_path}")
-        print("Verifique se o nome está correto ou se ele está na pasta certa do Google Drive.")
- import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
 from google.colab import drive
