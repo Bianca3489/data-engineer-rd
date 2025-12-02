@@ -7,6 +7,13 @@ import pandas as pd
 from google.cloud import bigquery
 import os
 
+# --- 1. CONFIGURAÇÃO INTELIGENTE DE CAMINHOS ---
+# Descobre onde este arquivo .py está (ex: .../desafio-data-engineer/dags)
+DAGS_FOLDER = os.path.dirname(os.path.abspath(__file__))
+
+# Descobre a raiz do projeto (sobe um nível: .../desafio-data-engineer)
+PROJECT_ROOT = os.path.dirname(DAGS_FOLDER)
+
 # --- Configurações Padrão ---
 default_args = {
     'owner': 'data_engineer',
@@ -17,52 +24,64 @@ default_args = {
     'retry_delay': timedelta(minutes=5),
 }
 
-# --- Função Python de Ingestão
+# --- Função Python de Ingestão ---
 def run_ingestion_script():
-
-    """Função para rodar o script de ingestão"""
-    # Importa o script de ingestão
-    # Nota: No Airflow real, as credenciais são gerenciadas via Connections, 
-    # mas aqui mantenho o código simples para o desafio.
-
+    """Lê os CSVs da raiz do projeto e sobe para o BigQuery"""
+    
     client = bigquery.Client()
     
-    # Lista de arquivos para ingerir (Exemplo)
+    # Monta o caminho exato onde os CSVs estão (Na raiz do projeto)
+    csv_funnel = os.path.join(PROJECT_ROOT, 'bi_challenge_rd_bi_funnel_email.csv')
+    csv_metas = os.path.join(PROJECT_ROOT, 'metas_email.csv')
+
+    # Lista de arquivos para ingerir
     files = [
-        {'path': '/path/to/data/bi_challenge_rd_bi_funnel_email.csv', 'table': 'raw_funnel'},
-        {'path': '/path/to/data/metas_email.csv', 'table': 'raw_metas'}
+        {'path': csv_funnel, 'table': 'raw_funnel'},
+        {'path': csv_metas, 'table': 'raw_metas'}
     ]
     
     for file in files:
+        print(f"Procurando arquivo em: {file['path']}")
+        
+        # Validação de Segurança: O arquivo existe?
+        if not os.path.exists(file['path']):
+            raise FileNotFoundError(f"ERRO CRÍTICO: Não achei o arquivo {file['path']}. Verifique se ele está na pasta {PROJECT_ROOT}")
+
+        print(f"Lendo CSV...")
         df = pd.read_csv(file['path'])
+        
         job_config = bigquery.LoadJobConfig(
             write_disposition="WRITE_TRUNCATE",
             autodetect=True
         )
         table_id = f"case-2-boti.marketing_funnel.{file['table']}"
-        client.load_table_from_dataframe(df, table_id, job_config=job_config).result()
-        print(f"Tabela {table_id} carregada.")
+        
+        job = client.load_table_from_dataframe(df, table_id, job_config=job_config)
+        job.result()
+        print(f"✅ Sucesso: Tabela {table_id} carregada.")
 
 # --- Definição da DAG ---
 with DAG(
     'marketing_funnel_pipeline',
     default_args=default_args,
     description='Pipeline de Marketing: Ingestão -> Clean -> Contract -> Delivery',
-    schedule_interval='@daily', # Roda todo dia
+    schedule_interval='@daily',
     start_date=days_ago(1),
     tags=['marketing', 'case'],
     catchup=False
 ) as dag:
 
-    # 1. Tarefa de Ingestão (Python)
+    # 1. Tarefa de Ingestão
     t1_ingestion = PythonOperator(
         task_id='ingest_raw_data',
         python_callable=run_ingestion_script
     )
 
     # 2. Tarefa de Limpeza (SQL - Silver)
-    # Lê o arquivo SQL que criamos anteriormente
-    with open('/dags/sql/etl_clean_funnel.sql', 'r') as f:
+    # Procura o SQL dentro de dags/sql/
+    path_clean = os.path.join(DAGS_FOLDER, 'sql/etl_clean_funnel.sql')
+    
+    with open(path_clean, 'r') as f:
         sql_clean = f.read()
 
     t2_transform_silver = BigQueryInsertJobOperator(
@@ -76,10 +95,10 @@ with DAG(
         location='US',
     )
 
-    # 3. Data Contract (Validação - Opcional do Desafio)
-    # Se esta query falhar (RAISE ERROR), o pipeline para aqui.
+    # 3. Data Contract (Validação)
+    path_contract = os.path.join(DAGS_FOLDER, 'sql/data_contract_check.sql')
 
-    with open('/dags/sql/data_contract_check.sql', 'r') as f:
+    with open(path_contract, 'r') as f:
         sql_contract = f.read()
 
     t3_data_contract = BigQueryInsertJobOperator(
@@ -94,8 +113,9 @@ with DAG(
     )
 
     # 4. Tarefa de Entrega (SQL - Gold)
+    path_delivery = os.path.join(DAGS_FOLDER, 'sql/etl_delivery_dashboard.sql')
     
-    with open('/dags/sql/etl_delivery_dashboard.sql', 'r') as f:
+    with open(path_delivery, 'r') as f:
         sql_delivery = f.read()
 
     t4_transform_gold = BigQueryInsertJobOperator(
